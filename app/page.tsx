@@ -28,13 +28,13 @@ export default function UltraSlideshowGenerator() {
     const loadFFmpeg = async () => {
       try {
         const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-        
+
         const ffmpegInstance = new FFmpeg();
-        
+
         ffmpegInstance.on('log', ({ message }) => {
           console.log('FFmpeg:', message);
         });
-        
+
         await ffmpegInstance.load();
         setFfmpeg(ffmpegInstance);
         setIsLoaded(true);
@@ -53,7 +53,7 @@ export default function UltraSlideshowGenerator() {
       const newFiles = Array.from(e.target.files);
       const remainingSlots = 8 - images.length;
       const filesToAdd = newFiles.slice(0, remainingSlots);
-      
+
       if (filesToAdd.length === 0) {
         alert('You can only upload up to 8 images total');
         return;
@@ -70,7 +70,7 @@ export default function UltraSlideshowGenerator() {
     if (e.target.files && e.target.files[0]) {
       const audioFile = e.target.files[0];
       if (audioPreview) URL.revokeObjectURL(audioPreview);
-      
+
       const newAudioPreview = URL.createObjectURL(audioFile);
       setAudio(audioFile);
       setAudioPreview(newAudioPreview);
@@ -135,20 +135,20 @@ export default function UltraSlideshowGenerator() {
     const baseScale = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black';
     const fps = 30;
     const totalFrames = duration * fps;
-    
+
     switch (effectType) {
       case 'smooth':
         return `${baseScale},zoompan=z='1.0 + 0.0003*on':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=${fps}`;
-      
+
       case 'zoom':
         return `${baseScale},zoompan=z='min(zoom+0.0008,1.1)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=${fps}`;
-      
+
       case 'zoomout':
         return `${baseScale},zoompan=z='if(lte(zoom,1.0),1.0,max(1.001,zoom-0.0008))':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=${fps}:zoom=1.2`;
-      
+
       case 'pan':
         return `${baseScale},zoompan=z=1.05:d=${totalFrames}:x='if(gte(on,1),(iw/1.05-iw)*(on/${totalFrames}),0)':y='ih/2-(ih/1.05/2)':s=1280x720:fps=${fps}`;
-      
+
       case 'fade':
       case 'slide':
       default:
@@ -161,7 +161,7 @@ export default function UltraSlideshowGenerator() {
       setError('Please select images and ensure FFmpeg is loaded');
       return;
     }
-    
+
     setIsGenerating(true);
     setProgress(0);
     setCurrentStep('Initializing...');
@@ -178,9 +178,9 @@ export default function UltraSlideshowGenerator() {
         const files = await ffmpeg.listDir('/');
         for (const file of files) {
           if (file.isDir) continue;
-          if (file.name.startsWith('input') || file.name.startsWith('segment') || 
-              file.name === 'audio.mp3' || file.name === 'output.mp4' || 
-              file.name === 'concat.txt' || file.name === 'looped_video.mp4') {
+          if (file.name.startsWith('input') || file.name.startsWith('segment') ||
+            file.name === 'audio.mp3' || file.name === 'output.mp4' ||
+            file.name === 'concat.txt' || file.name === 'looped_video.mp4') {
             await ffmpeg.deleteFile(file.name);
           }
         }
@@ -211,7 +211,7 @@ export default function UltraSlideshowGenerator() {
       setCurrentStep('Complete!');
       setProgress(100);
       setShowPreview(true);
-      
+
     } catch (error) {
       console.error('Error generating slideshow:', error);
       setError(`Failed to generate slideshow: ${error instanceof Error ? error.message : 'Unknown error'}. Try with smaller images or fewer files.`);
@@ -229,11 +229,11 @@ export default function UltraSlideshowGenerator() {
 
     async function createSlideshowWithAudio() {
       setCurrentStep('Calculating video length...');
-      
+
       const singleImageDuration = duration;
       const totalImageDuration = images.length * singleImageDuration;
       const requiredLoops = Math.ceil(audioDuration / totalImageDuration);
-      
+
       console.log(`Audio Duration: ${audioDuration}s`);
       console.log(`Single Loop: ${images.length} images × ${singleImageDuration}s = ${totalImageDuration}s`);
       console.log(`Required Loops: ${requiredLoops}`);
@@ -246,10 +246,10 @@ export default function UltraSlideshowGenerator() {
       // STEP 1: Create individual video segments for each image
       setCurrentStep('Creating video segments...');
       setProgress(25);
-      
+
       for (let i = 0; i < images.length; i++) {
         console.log(`Creating segment ${i} with duration ${singleImageDuration}s`);
-        
+
         const segmentArgs = [
           '-loop', '1',
           '-i', `input${i}.jpg`,
@@ -262,7 +262,7 @@ export default function UltraSlideshowGenerator() {
           '-y',
           `segment${i}.mp4`
         ];
-        
+
         await ffmpeg.exec(segmentArgs);
         setProgress(25 + Math.round(((i + 1) / images.length) * 30));
         setCurrentStep(`Creating segment ${i + 1}/${images.length}...`);
@@ -271,21 +271,21 @@ export default function UltraSlideshowGenerator() {
       // STEP 2: Create concat file with ALL required loops
       setCurrentStep(`Creating ${requiredLoops} loop(s) to match audio...`);
       setProgress(60);
-      
+
       let concatList = '';
       for (let loop = 0; loop < requiredLoops; loop++) {
         for (let i = 0; i < images.length; i++) {
           concatList += `file 'segment${i}.mp4'\n`;
         }
       }
-      
+
       console.log(`Concat list has ${requiredLoops * images.length} entries`);
       await ffmpeg.writeFile('concat.txt', new TextEncoder().encode(concatList));
 
       // STEP 3: Concatenate all looped segments into one long video
       setCurrentStep('Merging all loops...');
       setProgress(70);
-      
+
       const concatArgs = [
         '-f', 'concat',
         '-safe', '0',
@@ -301,7 +301,7 @@ export default function UltraSlideshowGenerator() {
       // STEP 4: Combine with audio and trim to EXACT audio duration
       setCurrentStep('Syncing with audio...');
       setProgress(85);
-      
+
       const combineArgs = [
         '-i', 'looped_video.mp4',
         '-i', 'audio.mp3',
@@ -329,13 +329,13 @@ export default function UltraSlideshowGenerator() {
       const url = URL.createObjectURL(blob);
       setPreviewUrl(url);
       setDownloadUrl(url);
-      
+
       console.log('✅ Slideshow generation complete!');
     }
 
     async function createSlideshowWithoutAudio() {
       setCurrentStep('Creating video segments...');
-      
+
       const transitionFilter = getTransitionFilter(effect);
       const fps = 30;
 
@@ -352,7 +352,7 @@ export default function UltraSlideshowGenerator() {
           '-y',
           `segment${i}.mp4`
         ];
-        
+
         await ffmpeg.exec(segmentArgs);
         setProgress(20 + Math.round(((i + 1) / images.length) * 60));
         setCurrentStep(`Creating image ${i + 1}/${images.length}...`);
@@ -421,8 +421,8 @@ export default function UltraSlideshowGenerator() {
             <Film className="w-8 h-8 text-purple-400" /> Ultra Slideshow Generator
           </h1>
           <p className="text-gray-400 mt-2">
-            {audio 
-              ? `Video will match audio length exactly (${audioDuration > 0 ? Math.round(audioDuration) + 's' : 'calculating...'})` 
+            {audio
+              ? `Video will match audio length exactly (${audioDuration > 0 ? Math.round(audioDuration) + 's' : 'calculating...'})`
               : `${images.length} images × ${duration}s = ${images.length * duration}s total`
             }
           </p>
@@ -461,25 +461,25 @@ export default function UltraSlideshowGenerator() {
 
         <div className="flex flex-col gap-6">
           <div>
-            <div 
+            <div
               onClick={triggerImageInput}
               className="border-2 border-dashed border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-purple-500 transition group"
             >
               <div className="flex flex-col items-center text-gray-400 group-hover:text-purple-400">
-                <Upload className="w-6 h-6 mb-2" /> 
+                <Upload className="w-6 h-6 mb-2" />
                 {images.length === 0 ? 'Upload Images' : 'Add More Images'}
                 <span className="text-sm mt-1">({images.length}/8 selected)</span>
               </div>
-              <input 
+              <input
                 ref={imageInputRef}
-                type="file" 
-                accept="image/*" 
-                multiple 
-                hidden 
-                onChange={handleImageUpload} 
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={handleImageUpload}
               />
             </div>
-            
+
             {imagePreviews.length > 0 && (
               <div className="mt-4">
                 <div className="flex justify-between items-center mb-2">
@@ -519,12 +519,12 @@ export default function UltraSlideshowGenerator() {
           </div>
 
           <div>
-            <div 
+            <div
               onClick={triggerAudioInput}
               className="border-2 border-dashed border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-pink-500 transition group"
             >
               <div className="flex flex-col items-center text-gray-400 group-hover:text-pink-400">
-                <Music className="w-6 h-6 mb-2" /> 
+                <Music className="w-6 h-6 mb-2" />
                 Upload Background Music (optional)
                 {audio && (
                   <span className="text-sm mt-1 text-green-400">
@@ -532,15 +532,15 @@ export default function UltraSlideshowGenerator() {
                   </span>
                 )}
               </div>
-              <input 
+              <input
                 ref={audioInputRef}
-                type="file" 
-                accept="audio/*" 
-                hidden 
-                onChange={handleAudioUpload} 
+                type="file"
+                accept="audio/*"
+                hidden
+                onChange={handleAudioUpload}
               />
             </div>
-            
+
             {audioPreview && audio && (
               <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
                 <div className="flex items-center justify-between">
@@ -561,8 +561,8 @@ export default function UltraSlideshowGenerator() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                <audio 
-                  controls 
+                <audio
+                  controls
                   className="w-full mt-3"
                   onLoadedMetadata={(e) => {
                     setAudioDuration(e.currentTarget.duration);
@@ -635,7 +635,7 @@ export default function UltraSlideshowGenerator() {
         <div className="mt-8 flex flex-col items-center">
           <button
             onClick={generateSlideshow}
-            disabled={isGenerating || !images.length || !isLoaded || (audio && audioDuration === 0)}
+            disabled={!!isGenerating || !images.length || !isLoaded || !!(audio && audioDuration === 0)}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
           >
             {isGenerating ? (
@@ -682,8 +682,8 @@ export default function UltraSlideshowGenerator() {
                     <Film className="w-5 h-5 text-purple-400" />
                     Preview Your Slideshow
                   </h3>
-                  <video 
-                    controls 
+                  <video
+                    controls
                     className="w-full rounded-lg shadow-lg"
                     preload="metadata"
                   >
@@ -700,7 +700,7 @@ export default function UltraSlideshowGenerator() {
                   </p>
                 </div>
               )}
-              
+
               <div className="text-center">
                 <a
                   href={downloadUrl}
